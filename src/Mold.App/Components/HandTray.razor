@@ -1,0 +1,31 @@
+@using Mold.Engine
+
+<section class="hand-tray" aria-label="Available pieces">
+    @foreach (var piece in Pieces)
+    {
+        <button type="button"
+                class="hand-card"
+                aria-label="@($"Select {piece.Name}")">
+            <strong>@piece.Name</strong>
+            <span>
+                @piece.Cells.Count cell@(piece.Cells.Count == 1 ? string.Empty : "s")
+            </span>
+        </button>
+    }
+
+    <button type="button"
+            class="rotate-control"
+            aria-label="Rotate selected piece"
+            disabled>
+        Rotate
+    </button>
+</section>
+
+@code {
+    private static readonly PieceDefinition[] Pieces =
+    [
+        PieceCatalog.Spore,
+        PieceCatalog.Pair,
+        PieceCatalog.Elbow,
+    ];
+}

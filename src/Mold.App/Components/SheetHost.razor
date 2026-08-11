@@ -1,0 +1,47 @@
+@if (ActiveSheet is { } sheet)
+{
+    <div class="sheet-overlay" @onclick="CloseAsync">
+        <section class="sheet-card @(sheet == SheetKind.Log ? "event-log-card" : null)"
+                 role="dialog"
+                 aria-modal="true"
+                 aria-labelledby="sheet-title"
+                 @onclick:stopPropagation>
+            <span class="sheet-handle" aria-hidden="true"></span>
+            <header class="sheet-heading">
+                <h2 id="sheet-title">@Title(sheet)</h2>
+                <button type="button" class="sheet-close" @onclick="CloseAsync" aria-label="Close sheet">×</button>
+            </header>
+            <p class="sheet-placeholder">@Description(sheet)</p>
+        </section>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public SheetKind? ActiveSheet { get; set; }
+
+    [Parameter, EditorRequired]
+    public EventCallback Closed { get; set; }
+
+    private Task CloseAsync() => Closed.InvokeAsync();
+
+    private static string Title(SheetKind sheet) => sheet switch
+    {
+        SheetKind.Museum => "Museum",
+        SheetKind.History => "History",
+        SheetKind.Blueprints => "Blueprints",
+        SheetKind.Log => "Event Log",
+        SheetKind.Tutorial => "Tutorial",
+        _ => "Garden"
+    };
+
+    private static string Description(SheetKind sheet) => sheet switch
+    {
+        SheetKind.Museum => "Discoveries arrive in a later phase.",
+        SheetKind.History => "Timeline replay arrives in a later phase.",
+        SheetKind.Blueprints => "Blueprint storage arrives in a later phase.",
+        SheetKind.Log => "Committed semantic events will appear here.",
+        SheetKind.Tutorial => "Interactive mini-boards arrive in a later phase.",
+        _ => string.Empty
+    };
+}

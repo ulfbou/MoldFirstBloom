@@ -1,0 +1,45 @@
+@using Mold.Engine
+
+<section class="board-wrapper" aria-label="Garden board">
+    <svg class="organism-lines"
+         viewBox="0 0 @BoardSize @BoardSize"
+         preserveAspectRatio="none"
+         aria-hidden="true">
+        <line x1="3.5"
+              y1="3.5"
+              x2="4.5"
+              y2="3.5" />
+    </svg>
+
+    <div class="board" style="--board-size: @BoardSize">
+        @for (var y = 0; y < BoardSize; y++)
+        {
+            @for (var x = 0; x < BoardSize; x++)
+            {
+                var position = new Position(x, y);
+                var isMoss = MossCells.Contains(position);
+                var cssClass = isMoss ? "board-cell moss" : "board-cell empty";
+
+                <button type="button"
+                        class="@cssClass"
+                        aria-label="@CellLabel(position, isMoss)">
+                </button>
+            }
+        }
+    </div>
+
+    <div class="particles" aria-hidden="true"></div>
+</section>
+
+@code {
+    private const int BoardSize = 7;
+
+    private static readonly HashSet<Position> MossCells =
+    [
+        new Position(3, 3),
+        new Position(4, 3),
+    ];
+
+    private static string CellLabel(Position position, bool isMoss) =>
+        $"Cell {position.X + 1}, {position.Y + 1}: {(isMoss ? "Moss" : "Empty")}";
+}

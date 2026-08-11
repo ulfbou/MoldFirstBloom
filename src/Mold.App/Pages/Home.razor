@@ -1,0 +1,65 @@
+@page "/"
+
+<PageTitle>MOLD: First Bloom</PageTitle>
+
+<main class="game-shell">
+    <header class="game-header">
+        <div>
+            <h1>MOLD: First Bloom</h1>
+            <span>Phase 0 presentation shell</span>
+        </div>
+
+        <div class="run-summary" aria-label="Current run">
+            <strong>0</strong>
+            <span>Turn 0</span>
+        </div>
+    </header>
+
+    <section class="onboard-progress"
+             aria-label="Prototype progress">
+        Mobile shell and board presentation
+    </section>
+
+    <BoardView />
+
+    <TeachingStrip />
+
+    <HandTray />
+
+    <footer class="bottom-controls">
+        <FabBar SheetRequested="OpenSheetAsync" />
+
+        <div class="primary-controls">
+            <button type="button"
+                    class="primary-control"
+                    disabled>
+                New Game
+            </button>
+
+            <button type="button"
+                    class="primary-control"
+                    disabled>
+                Rematch
+            </button>
+        </div>
+    </footer>
+</main>
+
+<SheetHost ActiveSheet="_activeSheet"
+           Closed="CloseSheetAsync" />
+
+@code {
+    private SheetKind? _activeSheet;
+
+    private Task OpenSheetAsync(SheetKind sheet)
+    {
+        _activeSheet = sheet;
+        return Task.CompletedTask;
+    }
+
+    private Task CloseSheetAsync()
+    {
+        _activeSheet = null;
+        return Task.CompletedTask;
+    }
+}

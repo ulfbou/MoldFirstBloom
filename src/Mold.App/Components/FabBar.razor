@@ -1,0 +1,13 @@
+<nav class="fab-row" aria-label="Garden collections">
+    <button type="button" @onclick="() => Open(SheetKind.Museum)" aria-label="Open Museum">📜</button>
+    <button type="button" @onclick="() => Open(SheetKind.History)" aria-label="Open History">🕰️</button>
+    <button type="button" @onclick="() => Open(SheetKind.Blueprints)" aria-label="Open Blueprints">💾</button>
+    <button type="button" @onclick="() => Open(SheetKind.Log)" aria-label="Open Event Log">📋</button>
+</nav>
+
+@code {
+    [Parameter, EditorRequired]
+    public EventCallback<SheetKind> SheetRequested { get; set; }
+
+    private Task Open(SheetKind sheet) => SheetRequested.InvokeAsync(sheet);
+}
