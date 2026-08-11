@@ -51,3 +51,10 @@ The shell includes non-functional framework sheets for deferred systems. They ar
 intentionally labeled as later-phase placeholders and cannot mutate the active run.
 The active save envelope is stored in IndexedDB (`mold-db`, schema version 3), while
 the Action Log remains authoritative and reload always reconstructs through replay.
+
+## Placement contract
+
+A piece may be placed at any origin where all transformed cells are in bounds
+and empty. The base rules do not require contact with existing moss. Placement
+remains preview-first and commits only on a second tap of the same origin within
+800 ms.
