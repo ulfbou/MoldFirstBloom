@@ -286,7 +286,7 @@ public sealed class GameSession(IGameEngine engine, BrowserStorage storage)
     {
         CommandError.OutsideBoard => "That shape extends outside the board.",
         CommandError.OccupiedCell => "That space is already occupied.",
-        CommandError.NoConnectedCell => "The piece must touch moss orthogonally.",
+        CommandError.NoConnectedCell => "That placement is not supported by the active ruleset.",
         CommandError.GameAlreadyEnded => "This run has ended.",
         _ => "That placement is not valid."
     };

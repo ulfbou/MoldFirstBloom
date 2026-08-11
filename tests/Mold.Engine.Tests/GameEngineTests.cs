@@ -36,14 +36,33 @@ public sealed class GameEngineTests
     public void InvalidCommandPreservesStateAndRandomPosition()
     {
         var state = _engine.Create("12345678");
-        var invalid = new PlacePieceCommand(0, new Position(0, 0), 0);
+        var invalid = new PlacePieceCommand(0, new Position(3, 3), 0);
 
         var result = _engine.Execute(state, invalid);
 
         Assert.False(result.Succeeded);
-        Assert.Equal(CommandError.NoConnectedCell, result.Error);
+        Assert.Equal(CommandError.OccupiedCell, result.Error);
         Assert.Same(state, result.State);
         Assert.Equal(state.RandomState, result.State.RandomState);
+    }
+
+    [Fact]
+    public void EmptyInBoundsOriginDoesNotNeedToTouchExistingMoss()
+    {
+        var state = _engine.Create("12345678");
+        var command = new PlacePieceCommand(
+            0,
+            new Position(0, 0),
+            0);
+
+        var preview = _engine.Preview(state, command);
+        var result = _engine.Execute(state, command);
+
+        Assert.True(preview.IsValid);
+        Assert.True(result.Succeeded);
+        Assert.Equal(
+            CellMaterial.Moss,
+            result.State.CellAt(new Position(0, 0)));
     }
 
     [Fact]

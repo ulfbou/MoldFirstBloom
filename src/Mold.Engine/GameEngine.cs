@@ -170,12 +170,7 @@ public sealed class GameEngine : IGameEngine
             return (CommandError.OccupiedCell, cells);
         }
 
-        var connects = cells.Any(position => position.OrthogonalNeighbors().Any(neighbor =>
-            state.Contains(neighbor) && state.CellAt(neighbor) == CellMaterial.Moss));
-
-        return connects
-            ? (CommandError.None, cells)
-            : (CommandError.NoConnectedCell, cells);
+        return (CommandError.None, cells);
     }
 
     private static (Position? From, Position? To, ulong RandomState) FindGrowth(GameState state)
