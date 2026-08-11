@@ -1,0 +1,39 @@
+name: Bug
+description: Report a defect
+title: "[BUG] "
+labels:
+  - type:bug
+
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction Steps
+      placeholder: |
+        1. Start game
+        2. Place piece
+        3. Open timeline
+        4. Observe issue
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behaviour
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual Behaviour
+    validations:
+      required: true

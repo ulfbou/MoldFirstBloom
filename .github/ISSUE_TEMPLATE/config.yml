@@ -1,0 +1,6 @@
+blank_issues_enabled: false
+
+contact_links:
+  - name: Release Specification
+    url: https://github.com/OWNER/MOLD/blob/main/release-spec.md
+    about: Review the release specification and roadmap before creating issues.

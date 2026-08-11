@@ -1,0 +1,42 @@
+name: Feature
+description: Gameplay, engine, UI, persistence, replay, sharing, or platform work
+title: "[FEATURE] "
+labels:
+  - type:feature
+
+body:
+  - type: input
+    id: area
+    attributes:
+      label: Area
+      placeholder: engine / replay / ui / mobile / memory / persistence
+    validations:
+      required: true
+
+  - type: textarea
+    id: user_story
+    attributes:
+      label: User Story
+    validations:
+      required: true
+
+  - type: textarea
+    id: implementation
+    attributes:
+      label: Technical Design
+      description: Architecture approach, contracts, data structures, APIs, etc.
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance Criteria
+    validations:
+      required: true
+
+  - type: textarea
+    id: tests
+    attributes:
+      label: Required Tests
+      description: Unit, integration, replay, determinism, smoke tests.
