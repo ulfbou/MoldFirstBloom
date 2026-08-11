@@ -1,45 +1,81 @@
-@using Mold.Engine
+@inject GameSession Session
 
-<section class="board-wrapper" aria-label="Garden board">
-    <svg class="organism-lines"
-         viewBox="0 0 @BoardSize @BoardSize"
-         preserveAspectRatio="none"
-         aria-hidden="true">
-        <line x1="3.5"
-              y1="3.5"
-              x2="4.5"
-              y2="3.5" />
-    </svg>
-
-    <div class="board" style="--board-size: @BoardSize">
-        @for (var y = 0; y < BoardSize; y++)
+<section class="board-wrapper" aria-label="Garden board" aria-busy="@Session.IsResolving">
+    <div class="board-stack">
+        <svg class="organism-lines" viewBox="0 0 @Session.State.Width @Session.State.Height" preserveAspectRatio="none" aria-hidden="true">
+            @foreach (var connection in Connections())
+            {
+                <line x1="@(connection.From.X + .5)" y1="@(connection.From.Y + .5)"
+                      x2="@(connection.To.X + .5)" y2="@(connection.To.Y + .5)" />
+            }
+        </svg>
+        <div class="board" style="--board-size: @Session.State.Width">
+        @for (var y = 0; y < Session.State.Height; y++)
         {
-            @for (var x = 0; x < BoardSize; x++)
+            @for (var x = 0; x < Session.State.Width; x++)
             {
                 var position = new Position(x, y);
-                var isMoss = MossCells.Contains(position);
-                var cssClass = isMoss ? "board-cell moss" : "board-cell empty";
+                var material = Session.State.CellAt(position);
+                var preview = Session.IsPreviewCell(position);
 
-                <button type="button"
-                        class="@cssClass"
-                        aria-label="@CellLabel(position, isMoss)">
+                <button class="board-cell @material.ToString().ToLowerInvariant() @(preview ? "preview" : null)"
+                        disabled="@Session.IsResolving"
+                        aria-label="@CellLabel(position, material, preview)"
+                        @onclick="() => Session.TapBoardAsync(position)">
+                    @if (material == CellMaterial.Moss)
+                    {
+                        <span class="moss-core" aria-hidden="true"></span>
+                    }
                 </button>
             }
         }
+        </div>
     </div>
 
-    <div class="particles" aria-hidden="true"></div>
+    <div class="particles" aria-hidden="true">
+        @foreach (var effect in Session.Effects)
+        {
+            <span class="effect @effect.Kind"
+                  style="left: calc((@effect.Position.X + .5) * 100% / @Session.State.Width); top: calc((@effect.Position.Y + .5) * 100% / @Session.State.Height)">
+                @effect.Text
+            </span>
+        }
+    </div>
 </section>
 
 @code {
-    private const int BoardSize = 7;
+    private IEnumerable<(Position From, Position To)> Connections()
+    {
+        for (var y = 0; y < Session.State.Height; y++)
+        {
+            for (var x = 0; x < Session.State.Width; x++)
+            {
+                var from = new Position(x, y);
+                if (Session.State.CellAt(from) != CellMaterial.Moss)
+                {
+                    continue;
+                }
 
-    private static readonly HashSet<Position> MossCells =
-    [
-        new Position(3, 3),
-        new Position(4, 3),
-    ];
+                var east = new Position(x + 1, y);
+                var south = new Position(x, y + 1);
 
-    private static string CellLabel(Position position, bool isMoss) =>
-        $"Cell {position.X + 1}, {position.Y + 1}: {(isMoss ? "Moss" : "Empty")}";
+                if (Session.State.Contains(east) && Session.State.CellAt(east) == CellMaterial.Moss)
+                {
+                    yield return (from, east);
+                }
+
+                if (Session.State.Contains(south) && Session.State.CellAt(south) == CellMaterial.Moss)
+                {
+                    yield return (from, south);
+                }
+            }
+        }
+    }
+
+    private static string CellLabel(Position position, CellMaterial material, bool preview)
+    {
+        var column = (char)('A' + position.X);
+        var state = preview ? "preview" : material.ToString().ToLowerInvariant();
+        return $"{column}{position.Y + 1}, {state}";
+    }
 }

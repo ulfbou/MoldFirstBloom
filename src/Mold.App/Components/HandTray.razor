@@ -1,31 +1,23 @@
-@using Mold.Engine
+@inject GameSession Session
 
-<section class="hand-tray" aria-label="Available pieces">
-    @foreach (var piece in Pieces)
+<section class="hand-tray" aria-label="Piece hand">
+    @for (var slot = 0; slot < Session.State.Hand.Count; slot++)
     {
-        <button type="button"
-                class="hand-card"
-                aria-label="@($"Select {piece.Name}")">
+        var capturedSlot = slot;
+        var piece = PieceCatalog.Get(Session.State.Hand[slot].PieceId);
+
+        <button class="hand-card @(Session.SelectedSlot == slot ? "selected" : null)"
+                disabled="@Session.IsResolving"
+                @onclick="() => Session.SelectPiece(capturedSlot)">
             <strong>@piece.Name</strong>
-            <span>
-                @piece.Cells.Count cell@(piece.Cells.Count == 1 ? string.Empty : "s")
-            </span>
+            <span>@piece.Cells.Count cells</span>
         </button>
     }
 
-    <button type="button"
-            class="rotate-control"
+    <button class="rotate-control"
             aria-label="Rotate selected piece"
-            disabled>
-        Rotate
+            disabled="@(Session.IsResolving || Session.SelectedSlot is null)"
+            @onclick="Session.Rotate">
+        ↻
     </button>
 </section>
-
-@code {
-    private static readonly PieceDefinition[] Pieces =
-    [
-        PieceCatalog.Spore,
-        PieceCatalog.Pair,
-        PieceCatalog.Elbow,
-    ];
-}

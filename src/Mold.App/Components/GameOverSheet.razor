@@ -1,45 +1,18 @@
-@if (Visible)
-{
-    <div class="sheet-overlay" @onclick="CloseAsync">
-        <section class="sheet-card game-over-card"
-                 role="dialog"
-                 aria-modal="true"
-                 aria-labelledby="game-over-title"
-                 @onclick:stopPropagation>
-            <h2 id="game-over-title">Garden Overgrown</h2>
+@inject GameSession Session
 
-            <p class="final-score">@Score</p>
-            <p>@Turns turns · @Blooms blooms</p>
-
-            <div class="game-over-actions">
-                <button type="button" disabled>Replay</button>
-                <button type="button" disabled>Rematch same seed</button>
-                <button type="button" disabled>New seed</button>
-                <button type="button" disabled>Share</button>
-            </div>
-
-            <button type="button" @onclick="CloseAsync">
-                Close
-            </button>
-        </section>
-    </div>
-}
+<div class="sheet-overlay" @onclick="IgnoreBackdrop">
+    <section class="sheet-card game-over-card" role="dialog" aria-modal="true" aria-labelledby="game-over-title" @onclick:stopPropagation>
+        <span class="sheet-handle" aria-hidden="true"></span>
+        <h2 id="game-over-title">Garden Overgrown</h2>
+        <p class="final-score">@Session.State.Score</p>
+        <p>@Session.State.Turn turns · @Session.State.BloomCount blooms</p>
+        <div class="sheet-actions">
+            <button @onclick="Session.RematchAsync">Rematch same seed</button>
+            <button @onclick="Session.NewGameAsync">New seed</button>
+        </div>
+    </section>
+</div>
 
 @code {
-    [Parameter]
-    public bool Visible { get; set; }
-
-    [Parameter]
-    public int Score { get; set; }
-
-    [Parameter]
-    public int Turns { get; set; }
-
-    [Parameter]
-    public int Blooms { get; set; }
-
-    [Parameter]
-    public EventCallback Closed { get; set; }
-
-    private Task CloseAsync() => Closed.InvokeAsync();
+    private static void IgnoreBackdrop() { }
 }
