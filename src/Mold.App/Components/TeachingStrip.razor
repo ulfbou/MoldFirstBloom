@@ -1,6 +1,8 @@
-<section class="teaching-strip idle"
+@inject GameSession Session
+
+<section class="teaching-strip @Session.Teaching.State.ToString().ToLowerInvariant()"
          aria-live="polite"
-         aria-label="Game guidance">
-    <span class="teaching-icon" aria-hidden="true">🌱</span>
-    <span>Select a piece, then choose a connected board cell.</span>
+         aria-atomic="true">
+    <span class="teaching-icon" aria-hidden="true">@Session.Teaching.Icon</span>
+    <span>@Session.Teaching.Message</span>
 </section>

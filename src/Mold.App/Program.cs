@@ -1,12 +1,15 @@
-namespace Mold.App;
+using Microsoft.AspNetCore.Components.Web;
+using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
+using Mold.App;
+using Mold.App.Services;
+using Mold.Engine;
 
-/// <summary>
-/// Temporary application entry point retained until the mobile application
-/// shell is introduced.
-/// </summary>
-internal static class Program
-{
-    private static void Main()
-    {
-    }
-}
+var builder = WebAssemblyHostBuilder.CreateDefault(args);
+builder.RootComponents.Add<App>("#app");
+builder.RootComponents.Add<HeadOutlet>("head::after");
+
+builder.Services.AddSingleton<IGameEngine, GameEngine>();
+builder.Services.AddScoped<BrowserStorage>();
+builder.Services.AddScoped<GameSession>();
+
+await builder.Build().RunAsync();
