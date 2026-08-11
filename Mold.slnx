@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="src/Mold.Engine/Mold.Engine.csproj" />
+  <Project Path="src/Mold.App/Mold.App.csproj" />
+  <Project Path="tests/Mold.Engine.Tests/Mold.Engine.Tests.csproj" />
+</Solution>
