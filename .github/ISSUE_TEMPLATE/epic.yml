@@ -1,0 +1,36 @@
+name: Epic
+description: Roadmap phase, major initiative, or cross-cutting delivery area
+title: "[EPIC] "
+labels:
+  - type:feature
+
+body:
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: What release objective does this epic deliver?
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: Major deliverables included in this epic.
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance Criteria
+      description: Release gates or measurable outcomes.
+    validations:
+      required: true
+
+  - type: textarea
+    id: child_issues
+    attributes:
+      label: Child Issues
+      description: Checklist or links to implementation issues.
