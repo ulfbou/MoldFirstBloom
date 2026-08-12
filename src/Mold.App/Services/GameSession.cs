@@ -15,7 +15,10 @@ public sealed record TeachingMessage(TeachingState State, string Icon, string Me
 
 public sealed record BoardEffect(string Kind, Position Position, string Text = "");
 
-public sealed class GameSession(IGameEngine engine, BrowserStorage storage)
+public sealed class GameSession(
+    IGameEngine engine,
+    FirstBloomReplay replay,
+    BrowserStorage storage)
 {
     private const string SaveKey = "mold.phase1.save";
     private static readonly TimeSpan CommitWindow = TimeSpan.FromMilliseconds(800);
@@ -53,13 +56,29 @@ public sealed class GameSession(IGameEngine engine, BrowserStorage storage)
 
         try
         {
-            var replay = Replay.Run(engine, save.Seed, save.ActionLog);
+            var replayResult = replay.Run(
+                save.Seed,
+                save.ActionLog,
+                save.ActionLog.Count);
+
+            if (replayResult is not
+                Verdant.Replay.ReplayResult<
+                    GameState,
+                    GameEvent>.Success replaySuccess)
+            {
+                throw new InvalidOperationException(
+                    "Saved ActionLog could not be reconstructed.");
+            }
+
             GameId = save.GameId;
             Seed = save.Seed;
-            State = replay.State;
+            State = replaySuccess.State;
             ActionLog.Clear();
             ActionLog.AddRange(save.ActionLog);
-            Teaching = new(TeachingState.Idle, "🌱", "Run restored from deterministic replay.");
+            Teaching = new(
+                TeachingState.Idle,
+                "🌱",
+                "Run restored through Verdant Replay authority.");
         }
         catch
         {

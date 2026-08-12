@@ -9,6 +9,7 @@ builder.RootComponents.Add<App>("#app");
 builder.RootComponents.Add<HeadOutlet>("head::after");
 
 builder.Services.AddSingleton<IGameEngine, GameEngine>();
+builder.Services.AddSingleton<FirstBloomReplay>();
 builder.Services.AddScoped<BrowserStorage>();
 builder.Services.AddScoped<GameSession>();
 

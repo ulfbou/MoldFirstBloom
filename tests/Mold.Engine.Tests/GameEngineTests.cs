@@ -12,12 +12,15 @@ public sealed class GameEngineTests
     {
         const string seed = "A1B2C3D4";
         var log = BuildTwoActionLog(seed);
+        var replay = new FirstBloomReplay(_engine);
 
-        var first = Replay.Run(_engine, seed, log);
-        var second = Replay.Run(_engine, seed, log);
+        var first = AssertReplaySuccess(replay.Run(seed, log));
+        var second = AssertReplaySuccess(replay.Run(seed, log));
 
         AssertStatesEqual(first.State, second.State);
-        Assert.Equal(first.Events.Select(EventText), second.Events.Select(EventText));
+        Assert.Equal(
+            first.Events.Select(EventText),
+            second.Events.Select(EventText));
     }
 
     [Fact]
@@ -25,9 +28,11 @@ public sealed class GameEngineTests
     {
         const string seed = "A1B2C3D4";
         var log = BuildTwoActionLog(seed);
+        var replay = new FirstBloomReplay(_engine);
 
-        var partial = Replay.Run(_engine, seed, log, upTo: 1);
-        var prefix = Replay.Run(_engine, seed, log.Take(1).ToArray());
+        var partial = AssertReplaySuccess(replay.Run(seed, log, 1));
+        var prefix = AssertReplaySuccess(
+            replay.Run(seed, log.Take(1).ToArray()));
 
         AssertStatesEqual(prefix.State, partial.State);
     }
@@ -79,6 +84,17 @@ public sealed class GameEngineTests
             Assert.NotEqual(CommandError.InvalidHandSlot, preview.Error);
         }
     }
+
+    private static Verdant.Replay.ReplayResult<
+        GameState,
+        GameEvent>.Success AssertReplaySuccess(
+            Verdant.Replay.ReplayResult<
+                GameState,
+                GameEvent> result) =>
+        Assert.IsType<
+            Verdant.Replay.ReplayResult<
+                GameState,
+                GameEvent>.Success>(result);
 
     private static void AssertStatesEqual(GameState expected, GameState actual)
     {
