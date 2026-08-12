@@ -4,7 +4,7 @@ using Xunit;
 
 namespace Mold.Engine.Tests;
 
-public sealed class VerdantReplayMigrationTests
+public sealed class ReplayPrefixVerificationTests
 {
     private const string Seed = "A1B2C3D4";
 
