@@ -343,7 +343,7 @@ public sealed class VerdantReplayMigrationTests
                 log,
                 log.Count));
 
-        Assert.Equal(before.Count, log.Count);
+        Assert.Equal(before.Length, log.Count);
 
         for (var index = 0;
              index < before.Length;
@@ -410,9 +410,12 @@ public sealed class VerdantReplayMigrationTests
         _ = AssertSuccess(
             replay.Run(Seed, log));
 
-        Assert.Equal(
+        var currentEvents =
+            first.Events.Select(CaptureEvent).ToArray();
+
+        AssertEventSnapshotsEqual(
             eventSnapshot,
-            first.Events.Select(CaptureEvent));
+            currentEvents);
 
         Assert.Equal(
             batchSnapshot.Length,
@@ -422,10 +425,14 @@ public sealed class VerdantReplayMigrationTests
              index < batchSnapshot.Length;
              index++)
         {
-            Assert.Equal(
-                batchSnapshot[index],
+            var currentBatch =
                 first.EventBatches[index]
-                    .Select(CaptureEvent));
+                    .Select(CaptureEvent)
+                    .ToArray();
+
+            AssertEventSnapshotsEqual(
+                batchSnapshot[index],
+                currentBatch);
         }
     }
 
@@ -583,7 +590,7 @@ public sealed class VerdantReplayMigrationTests
             migrated.Events);
     }
 
-    private IReadOnlyList<ActionEntry> BuildAcceptedLog(
+    private List<ActionEntry> BuildAcceptedLog(
         int actionCount)
     {
         var state = _engine.Create(Seed);
@@ -900,6 +907,57 @@ public sealed class VerdantReplayMigrationTests
                     $"No event snapshot exists for " +
                     $"{item.GetType().FullName}.")
         };
+
+    private static void AssertEventSnapshotsEqual(
+        IReadOnlyList<EventSnapshot> expected,
+        IReadOnlyList<EventSnapshot> actual)
+    {
+        Assert.Equal(expected.Count, actual.Count);
+
+        for (var index = 0;
+             index < expected.Count;
+             index++)
+        {
+            var expectedEvent = expected[index];
+            var actualEvent = actual[index];
+
+            Assert.Equal(
+                expectedEvent.Type,
+                actualEvent.Type);
+
+            Assert.Equal(
+                expectedEvent.Text,
+                actualEvent.Text);
+
+            Assert.Equal(
+                expectedEvent.Cells,
+                actualEvent.Cells);
+
+            Assert.Equal(
+                expectedEvent.From,
+                actualEvent.From);
+
+            Assert.Equal(
+                expectedEvent.To,
+                actualEvent.To);
+
+            Assert.Equal(
+                expectedEvent.CellCount,
+                actualEvent.CellCount);
+
+            Assert.Equal(
+                expectedEvent.PieceCount,
+                actualEvent.PieceCount);
+
+            Assert.Equal(
+                expectedEvent.EnclosureCount,
+                actualEvent.EnclosureCount);
+
+            Assert.Equal(
+                expectedEvent.Score,
+                actualEvent.Score);
+        }
+    }
 
     private sealed record StateSnapshot(
         int Width,
