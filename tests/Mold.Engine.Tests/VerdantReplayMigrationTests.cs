@@ -27,7 +27,7 @@ public sealed class VerdantReplayMigrationTests
     }
 
     [Fact]
-    public void EveryValidPrefixMatchesLegacyStateAndEvents()
+    public void EveryValidPrefixMatchesUninterruptedLiveExecution()
     {
         var log = BuildAcceptedLog(3);
         var replay = new FirstBloomReplay(_engine);
@@ -36,17 +36,9 @@ public sealed class VerdantReplayMigrationTests
              actionCount <= log.Count;
              actionCount++)
         {
-            var expected = Replay.Run(
-                _engine,
-                Seed,
-                log,
-                actionCount);
-
+            var expected = ExecuteLivePrefix(log, actionCount);
             var actual = AssertSuccess(
-                replay.Run(
-                    Seed,
-                    log,
-                    actionCount));
+                replay.Run(Seed, log, actionCount));
 
             AssertStateEqual(expected.State, actual.State);
             AssertEventSequenceEqual(expected.Events, actual.Events);
@@ -524,70 +516,58 @@ public sealed class VerdantReplayMigrationTests
     public void StateParityCoversEveryCurrentAuthoritativeField()
     {
         var log = BuildAcceptedLog(3);
-        var legacy = Replay.Run(
-            _engine,
-            Seed,
-            log,
-            log.Count);
+        var live = ExecuteLivePrefix(log, log.Count);
+        var replayed = AssertSuccess(
+            new FirstBloomReplay(_engine).Run(Seed, log));
 
-        var migrated = AssertSuccess(
-            new FirstBloomReplay(_engine)
-                .Run(Seed, log));
-
-        Assert.Equal(
-            legacy.State.Width,
-            migrated.State.Width);
-
-        Assert.Equal(
-            legacy.State.Height,
-            migrated.State.Height);
-
-        Assert.Equal(
-            legacy.State.Cells,
-            migrated.State.Cells);
-
-        Assert.Equal(
-            legacy.State.Hand,
-            migrated.State.Hand);
-
-        Assert.Equal(
-            legacy.State.Score,
-            migrated.State.Score);
-
-        Assert.Equal(
-            legacy.State.Turn,
-            migrated.State.Turn);
-
-        Assert.Equal(
-            legacy.State.BloomCount,
-            migrated.State.BloomCount);
-
-        Assert.Equal(
-            legacy.State.RandomState,
-            migrated.State.RandomState);
-
-        Assert.Equal(
-            legacy.State.IsGameOver,
-            migrated.State.IsGameOver);
+        Assert.Equal(live.State.Width, replayed.State.Width);
+        Assert.Equal(live.State.Height, replayed.State.Height);
+        Assert.Equal(live.State.Cells, replayed.State.Cells);
+        Assert.Equal(live.State.Hand, replayed.State.Hand);
+        Assert.Equal(live.State.Score, replayed.State.Score);
+        Assert.Equal(live.State.Turn, replayed.State.Turn);
+        Assert.Equal(live.State.BloomCount, replayed.State.BloomCount);
+        Assert.Equal(live.State.RandomState, replayed.State.RandomState);
+        Assert.Equal(live.State.IsGameOver, replayed.State.IsGameOver);
     }
 
     [Fact]
     public void EventParityComparesConcreteTypesAndPayloads()
     {
         var log = BuildAcceptedLog(3);
-        var legacy = Replay.Run(
-            _engine,
-            Seed,
-            log,
-            log.Count);
+        var live = ExecuteLivePrefix(log, log.Count);
+        var replayed = AssertSuccess(
+            new FirstBloomReplay(_engine).Run(Seed, log));
 
-        var migrated = AssertSuccess(
-            new FirstBloomReplay(_engine)
-                .Run(Seed, log));
+        AssertEventSequenceEqual(live.Events, replayed.Events);
+    }
 
-        AssertEventSequenceEqual(
-            legacy.Events,
-            migrated.Events);
+    private LiveExecutionResult ExecuteLivePrefix(
+        List<ActionEntry> log,
+        int actionCount)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(actionCount);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(actionCount, log.Count, nameof(actionCount));
+
+        var state = _engine.Create(Seed);
+        var events = new List<GameEvent>();
+
+        for (var index = 0; index < actionCount; index++)
+        {
+            var action = log[index];
+            var result = _engine.Execute(
+                state,
+                new PlacePieceCommand(
+                    action.Slot,
+                    action.Origin,
+                    action.Rotation));
+
+            Assert.True(result.Succeeded);
+            state = result.State;
+            events.AddRange(result.Events);
+        }
+
+        return new LiveExecutionResult(state, events.ToArray());
     }
 
     private List<ActionEntry> BuildAcceptedLog(
@@ -958,6 +938,10 @@ public sealed class VerdantReplayMigrationTests
                 actualEvent.Score);
         }
     }
+
+    private sealed record LiveExecutionResult(
+        GameState State,
+        IReadOnlyList<GameEvent> Events);
 
     private sealed record StateSnapshot(
         int Width,
