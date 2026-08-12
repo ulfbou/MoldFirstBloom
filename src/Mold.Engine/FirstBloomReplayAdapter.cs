@@ -27,29 +27,23 @@ public sealed class FirstBloomReplayAdapter(
         ArgumentNullException.ThrowIfNull(state);
         ArgumentNullException.ThrowIfNull(action);
 
-        var command = new PlacePieceCommand(
-            action.Slot,
-            action.Origin,
-            action.Rotation);
+        var result = engine.Execute(
+            state,
+            new PlacePieceCommand(
+                action.Slot,
+                action.Origin,
+                action.Rotation));
 
-        var result = engine.Execute(state, command);
-
-        if (!result.Succeeded)
-        {
-            return new ReplayStepResult<
-                GameState,
-                GameEvent>.Rejected(
-                    FailureCode(result.Error));
-        }
-
-        return new ReplayStepResult<
-            GameState,
-            GameEvent>.Accepted(
+        return result.Succeeded
+            ? new ReplayStepResult<GameState, GameEvent>.Accepted(
                 result.State,
-                result.Events);
+                result.Events)
+            : new ReplayStepResult<GameState, GameEvent>.Rejected(
+                ToStableFailureCode(result.Error));
     }
 
-    private static string FailureCode(CommandError error) =>
+    internal static string ToStableFailureCode(
+        CommandError error) =>
         error switch
         {
             CommandError.GameAlreadyEnded =>

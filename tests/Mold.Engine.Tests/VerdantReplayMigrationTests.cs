@@ -11,116 +11,141 @@ public sealed class VerdantReplayMigrationTests
     private readonly GameEngine _engine = new();
 
     [Fact]
-    public void EveryValidPrefixMatchesLegacyReplayStateAndEvents()
+    public void ReplayZeroReconstructsCanonicalInitialState()
     {
-        var log = BuildTwoActionLog();
-        var verdantReplay = new FirstBloomReplay(_engine);
+        var log = BuildAcceptedLog(3);
+        var expected = _engine.Create(Seed);
+        var replay = new FirstBloomReplay(_engine);
+
+        var actual = AssertSuccess(
+            replay.Run(Seed, log, 0));
+
+        AssertStateEqual(expected, actual.State);
+        Assert.Empty(actual.Events);
+        Assert.Empty(actual.EventBatches);
+        Assert.Equal(0, actual.AppliedActionCount);
+    }
+
+    [Fact]
+    public void EveryValidPrefixMatchesLegacyStateAndEvents()
+    {
+        var log = BuildAcceptedLog(3);
+        var replay = new FirstBloomReplay(_engine);
 
         for (var actionCount = 0;
              actionCount <= log.Count;
              actionCount++)
         {
-            var legacy = Replay.Run(
+            var expected = Replay.Run(
                 _engine,
                 Seed,
                 log,
                 actionCount);
 
-            var migrated = AssertSuccess(
-                verdantReplay.Run(
+            var actual = AssertSuccess(
+                replay.Run(
                     Seed,
                     log,
                     actionCount));
 
-            AssertStatesEqual(legacy.State, migrated.State);
-
-            Assert.Equal(
-                legacy.Events.Select(EventText),
-                migrated.Events.Select(EventText));
-
-            Assert.Equal(
-                actionCount,
-                migrated.AppliedActionCount);
+            AssertStateEqual(expected.State, actual.State);
+            AssertEventSequenceEqual(expected.Events, actual.Events);
+            Assert.Equal(actionCount, actual.AppliedActionCount);
         }
     }
 
     [Fact]
-    public void EveryPrefixIsReconstructedIndependently()
+    public void EveryPrefixReconstructsFromFreshInitialization()
     {
-        var log = BuildTwoActionLog();
-        var replay = new FirstBloomReplay(_engine);
+        var log = BuildAcceptedLog(3);
+        var spy = new SpyGameEngine(_engine);
+        var replay = new FirstBloomReplay(spy);
 
-        var zero = AssertSuccess(
-            replay.Run(Seed, log, 0));
+        for (var actionCount = 0;
+             actionCount <= log.Count;
+             actionCount++)
+        {
+            var result = AssertSuccess(
+                replay.Run(
+                    Seed,
+                    log,
+                    actionCount));
 
-        var one = AssertSuccess(
-            replay.Run(Seed, log, 1));
+            Assert.Equal(actionCount, result.AppliedActionCount);
+        }
 
-        var two = AssertSuccess(
-            replay.Run(Seed, log, 2));
+        Assert.Equal(log.Count + 1, spy.CreateCallCount);
 
-        var zeroAgain = AssertSuccess(
-            replay.Run(Seed, log, 0));
-
-        Assert.Equal(0, zero.AppliedActionCount);
-        Assert.Equal(1, one.AppliedActionCount);
-        Assert.Equal(2, two.AppliedActionCount);
-
-        Assert.Equal(0, zero.State.Turn);
-        Assert.Equal(1, one.State.Turn);
-        Assert.Equal(2, two.State.Turn);
-
-        AssertStatesEqual(zero.State, zeroAgain.State);
         Assert.Equal(
-            zero.Events.Select(EventText),
-            zeroAgain.Events.Select(EventText));
+            Enumerable.Range(0, log.Count + 1).Sum(),
+            spy.ExecuteCallCount);
     }
 
     [Fact]
-    public void ReplayZeroEqualsCanonicalInitialState()
+    public void ReplayAppliesOnlyTheRequestedPrefix()
     {
-        var log = BuildTwoActionLog();
-        var replay = new FirstBloomReplay(_engine);
-        var initial = _engine.Create(Seed);
+        var log = BuildAcceptedLog(3);
+        var spy = new SpyGameEngine(_engine);
+        var replay = new FirstBloomReplay(spy);
 
         var result = AssertSuccess(
-            replay.Run(Seed, log, 0));
+            replay.Run(Seed, log, 2));
 
-        AssertStatesEqual(initial, result.State);
-        Assert.Empty(result.Events);
-        Assert.Empty(result.EventBatches);
-        Assert.Equal(0, result.AppliedActionCount);
+        Assert.Equal(1, spy.CreateCallCount);
+        Assert.Equal(2, spy.ExecuteCallCount);
+        Assert.Equal(2, result.AppliedActionCount);
+        Assert.Equal(2, result.State.Turn);
+        Assert.Equal(2, result.EventBatches.Count);
     }
 
     [Fact]
-    public void ReplayPreservesPerActionEventBatches()
+    public void EventBatchesMatchDirectExecutionPerAction()
     {
-        var log = BuildTwoActionLog();
+        var log = BuildAcceptedLog(3);
         var replay = new FirstBloomReplay(_engine);
-
         var result = AssertSuccess(
             replay.Run(Seed, log, log.Count));
 
+        var state = _engine.Create(Seed);
+
         Assert.Equal(log.Count, result.EventBatches.Count);
 
-        var flattened = result.EventBatches
-            .SelectMany(batch => batch)
-            .Select(EventText);
+        for (var actionIndex = 0;
+             actionIndex < log.Count;
+             actionIndex++)
+        {
+            var entry = log[actionIndex];
+            var direct = _engine.Execute(
+                state,
+                new PlacePieceCommand(
+                    entry.Slot,
+                    entry.Origin,
+                    entry.Rotation));
 
-        Assert.Equal(
-            result.Events.Select(EventText),
-            flattened);
+            Assert.True(direct.Succeeded);
+
+            AssertEventSequenceEqual(
+                direct.Events,
+                result.EventBatches[actionIndex]);
+
+            state = direct.State;
+        }
+
+        AssertEventSequenceEqual(
+            result.EventBatches.SelectMany(batch => batch).ToArray(),
+            result.Events);
     }
 
     [Theory]
     [InlineData(-1)]
-    [InlineData(3)]
+    [InlineData(4)]
     [InlineData(999)]
-    public void InvalidPrefixReturnsTypedFailureWithoutClamping(
+    public void InvalidPrefixReturnsTypedFailureBeforeInitializationOrExecution(
         int actionCount)
     {
-        var log = BuildTwoActionLog();
-        var replay = new FirstBloomReplay(_engine);
+        var log = BuildAcceptedLog(3);
+        var spy = new SpyGameEngine(_engine);
+        var replay = new FirstBloomReplay(spy);
 
         var result = replay.Run(
             Seed,
@@ -138,25 +163,30 @@ public sealed class VerdantReplayMigrationTests
 
         Assert.Null(failure.Error.ActionIndex);
         Assert.Null(failure.Error.AdapterFailureCode);
+        Assert.Equal(0, spy.CreateCallCount);
+        Assert.Equal(0, spy.ExecuteCallCount);
+        Assert.Empty(spy.ExecutedCommands);
     }
 
     [Fact]
-    public void RejectedAuthoritativeActionReturnsStableFailure()
+    public void RejectedAuthoritativeActionReturnsStableFailureAndStopsReplay()
     {
-        var initial = _engine.Create(Seed);
+        var validLog = BuildAcceptedLog(2);
+        var invalidEntry = new ActionEntry(
+            99,
+            new Position(0, 0),
+            0,
+            2);
 
         IReadOnlyList<ActionEntry> log =
         [
-            new ActionEntry(
-                0,
-                new Position(
-                    initial.Width / 2,
-                    initial.Height / 2),
-                0,
-                1)
+            validLog[0],
+            invalidEntry,
+            validLog[1]
         ];
 
-        var replay = new FirstBloomReplay(_engine);
+        var spy = new SpyGameEngine(_engine);
+        var replay = new FirstBloomReplay(spy);
 
         var result = replay.Run(
             Seed,
@@ -172,16 +202,108 @@ public sealed class VerdantReplayMigrationTests
             ReplayErrorCode.AuthoritativeCommandRejected,
             failure.Error.Code);
 
-        Assert.Equal(0, failure.Error.ActionIndex);
+        Assert.Equal(1, failure.Error.ActionIndex);
         Assert.Equal(
-            "OCCUPIED_CELL",
+            "INVALID_HAND_SLOT",
             failure.Error.AdapterFailureCode);
+
+        Assert.Equal(1, spy.CreateCallCount);
+        Assert.Equal(2, spy.ExecuteCallCount);
+        Assert.Equal(2, spy.ExecutedCommands.Count);
+
+        Assert.DoesNotContain(
+            spy.ExecutedCommands,
+            command =>
+                command.Slot == validLog[1].Slot &&
+                command.Origin == validLog[1].Origin &&
+                command.Rotation == validLog[1].Rotation);
     }
 
     [Fact]
-    public void RepeatedReplayProducesEquivalentStateAndEvents()
+    public void AdapterMapsEveryCurrentCommandErrorToStableCode()
     {
-        var log = BuildTwoActionLog();
+        Assert.Equal(
+            "GAME_ALREADY_ENDED",
+            FirstBloomReplayAdapter.ToStableFailureCode(
+                CommandError.GameAlreadyEnded));
+
+        Assert.Equal(
+            "INVALID_HAND_SLOT",
+            FirstBloomReplayAdapter.ToStableFailureCode(
+                CommandError.InvalidHandSlot));
+
+        Assert.Equal(
+            "OUTSIDE_BOARD",
+            FirstBloomReplayAdapter.ToStableFailureCode(
+                CommandError.OutsideBoard));
+
+        Assert.Equal(
+            "OCCUPIED_CELL",
+            FirstBloomReplayAdapter.ToStableFailureCode(
+                CommandError.OccupiedCell));
+
+        Assert.Equal(
+            "NO_CONNECTED_CELL",
+            FirstBloomReplayAdapter.ToStableFailureCode(
+                CommandError.NoConnectedCell));
+
+        Assert.Equal(
+            "UNEXPECTED_SUCCESS_ERROR",
+            FirstBloomReplayAdapter.ToStableFailureCode(
+                CommandError.None));
+    }
+
+    [Fact]
+    public void AdapterDelegatesAcceptedExecutionWithoutChangingItsResult()
+    {
+        var state = _engine.Create(Seed);
+        var command = FindFirstValid(state);
+        var direct = _engine.Execute(state, command);
+
+        Assert.True(direct.Succeeded);
+
+        var action = ToActionEntry(
+            command,
+            direct.State.Turn);
+
+        var adapter =
+            new FirstBloomReplayAdapter(_engine);
+
+        var adapted = adapter.Execute(
+            state,
+            action);
+
+        var accepted =
+            Assert.IsType<
+                ReplayStepResult<
+                    GameState,
+                    GameEvent>.Accepted>(
+                        adapted);
+
+        AssertStateEqual(direct.State, accepted.State);
+        AssertEventSequenceEqual(
+            direct.Events,
+            accepted.Events);
+    }
+
+    [Fact]
+    public void AdapterDelegatesCanonicalInitialization()
+    {
+        var spy = new SpyGameEngine(_engine);
+        var adapter = new FirstBloomReplayAdapter(spy);
+
+        var state = adapter.CreateInitialState(
+            new FirstBloomReplayInitialization(Seed));
+
+        Assert.Equal(1, spy.CreateCallCount);
+        Assert.Equal([Seed], spy.CreatedSeeds);
+        AssertStateEqual(_engine.Create(Seed), state);
+    }
+
+    [Fact]
+    public void RepeatedReplayProducesEquivalentStateEventsAndBatches()
+    {
+        var log = BuildAcceptedLog(3);
         var replay = new FirstBloomReplay(_engine);
 
         var first = AssertSuccess(
@@ -193,23 +315,26 @@ public sealed class VerdantReplayMigrationTests
         var third = AssertSuccess(
             replay.Run(Seed, log));
 
-        AssertStatesEqual(first.State, second.State);
-        AssertStatesEqual(second.State, third.State);
+        AssertStateEqual(first.State, second.State);
+        AssertStateEqual(second.State, third.State);
 
-        Assert.Equal(
-            first.Events.Select(EventText),
-            second.Events.Select(EventText));
+        AssertEventSequenceEqual(first.Events, second.Events);
+        AssertEventSequenceEqual(second.Events, third.Events);
 
-        Assert.Equal(
-            second.Events.Select(EventText),
-            third.Events.Select(EventText));
+        AssertEventBatchesEqual(
+            first.EventBatches,
+            second.EventBatches);
+
+        AssertEventBatchesEqual(
+            second.EventBatches,
+            third.EventBatches);
     }
 
     [Fact]
-    public void ReplayDoesNotModifySuppliedActionLog()
+    public void ReplayDoesNotMutateSuppliedActionLog()
     {
-        var log = BuildTwoActionLog().ToList();
-        var original = log.ToArray();
+        var log = BuildAcceptedLog(3).ToList();
+        var before = log.Select(CloneAction).ToArray();
         var replay = new FirstBloomReplay(_engine);
 
         _ = AssertSuccess(
@@ -218,96 +343,270 @@ public sealed class VerdantReplayMigrationTests
                 log,
                 log.Count));
 
-        Assert.Equal(original, log);
+        Assert.Equal(before.Count, log.Count);
+
+        for (var index = 0;
+             index < before.Length;
+             index++)
+        {
+            Assert.Equal(before[index], log[index]);
+        }
     }
 
     [Fact]
-    public void ReplayDoesNotModifyExistingLiveState()
+    public void ReplayDoesNotMutatePreExistingLiveState()
     {
-        var log = BuildTwoActionLog();
         var liveState = _engine.Create(Seed);
-        var before = Snapshot(liveState);
+        var before = CaptureState(liveState);
+        var log = BuildAcceptedLog(3);
         var replay = new FirstBloomReplay(_engine);
 
         _ = AssertSuccess(
-            replay.Run(
-                Seed,
-                log,
-                log.Count));
+            replay.Run(Seed, log));
 
-        Assert.Equal(before, Snapshot(liveState));
+        AssertStateSnapshotEqual(
+            before,
+            CaptureState(liveState));
     }
 
     [Fact]
-    public void AdapterReusesExistingDeterministicEngineExecution()
+    public void ReplayDoesNotMutatePreviouslyReturnedReplayState()
+    {
+        var log = BuildAcceptedLog(3);
+        var replay = new FirstBloomReplay(_engine);
+
+        var prefixOne = AssertSuccess(
+            replay.Run(Seed, log, 1));
+
+        var prefixOneBefore =
+            CaptureState(prefixOne.State);
+
+        _ = AssertSuccess(
+            replay.Run(Seed, log, 3));
+
+        AssertStateSnapshotEqual(
+            prefixOneBefore,
+            CaptureState(prefixOne.State));
+    }
+
+    [Fact]
+    public void ReplayDoesNotMutatePreviouslyReturnedEventCollections()
+    {
+        var log = BuildAcceptedLog(3);
+        var replay = new FirstBloomReplay(_engine);
+
+        var first = AssertSuccess(
+            replay.Run(Seed, log));
+
+        var eventSnapshot =
+            first.Events.Select(CaptureEvent).ToArray();
+
+        var batchSnapshot =
+            first.EventBatches
+                .Select(batch =>
+                    batch.Select(CaptureEvent).ToArray())
+                .ToArray();
+
+        _ = AssertSuccess(
+            replay.Run(Seed, log));
+
+        Assert.Equal(
+            eventSnapshot,
+            first.Events.Select(CaptureEvent));
+
+        Assert.Equal(
+            batchSnapshot.Length,
+            first.EventBatches.Count);
+
+        for (var index = 0;
+             index < batchSnapshot.Length;
+             index++)
+        {
+            Assert.Equal(
+                batchSnapshot[index],
+                first.EventBatches[index]
+                    .Select(CaptureEvent));
+        }
+    }
+
+    [Fact]
+    public void ReplayInvokesOnlyInitializationAndCommandExecution()
+    {
+        var log = BuildAcceptedLog(3);
+        var spy = new SpyGameEngine(_engine);
+        var replay = new FirstBloomReplay(spy);
+
+        _ = AssertSuccess(
+            replay.Run(Seed, log));
+
+        Assert.Equal(1, spy.CreateCallCount);
+        Assert.Equal(log.Count, spy.ExecuteCallCount);
+        Assert.Equal(0, spy.PreviewCallCount);
+        Assert.Equal([Seed], spy.CreatedSeeds);
+        Assert.Equal(log.Count, spy.ExecutedCommands.Count);
+    }
+
+    [Fact]
+    public void ReplayHasNoStoragePresentationOrSessionDependency()
+    {
+        var constructor = typeof(FirstBloomReplay)
+            .GetConstructors()
+            .Single();
+
+        Assert.Equal(
+            [typeof(IGameEngine)],
+            constructor
+                .GetParameters()
+                .Select(parameter => parameter.ParameterType));
+
+        var adapterConstructor =
+            typeof(FirstBloomReplayAdapter)
+                .GetConstructors()
+                .Single();
+
+        Assert.Equal(
+            [typeof(IGameEngine)],
+            adapterConstructor
+                .GetParameters()
+                .Select(parameter => parameter.ParameterType));
+
+        var referencedAssemblies =
+            typeof(FirstBloomReplay)
+                .Assembly
+                .GetReferencedAssemblies()
+                .Select(reference => reference.Name)
+                .Where(name => name is not null)
+                .ToArray();
+
+        Assert.DoesNotContain(
+            referencedAssemblies,
+            name =>
+                name!.Contains(
+                    "Microsoft.JSInterop",
+                    StringComparison.Ordinal));
+
+        Assert.DoesNotContain(
+            referencedAssemblies,
+            name =>
+                name!.Contains(
+                    "Microsoft.AspNetCore.Components",
+                    StringComparison.Ordinal));
+
+        Assert.DoesNotContain(
+            referencedAssemblies,
+            name =>
+                name!.Contains(
+                    "Mold.App",
+                    StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void ReplayDoesNotUsePreviewAsAnAlternativeReducer()
+    {
+        var log = BuildAcceptedLog(3);
+        var spy = new SpyGameEngine(_engine);
+        var replay = new FirstBloomReplay(spy);
+
+        _ = AssertSuccess(
+            replay.Run(Seed, log));
+
+        Assert.Equal(0, spy.PreviewCallCount);
+    }
+
+    [Fact]
+    public void StateParityCoversEveryCurrentAuthoritativeField()
+    {
+        var log = BuildAcceptedLog(3);
+        var legacy = Replay.Run(
+            _engine,
+            Seed,
+            log,
+            log.Count);
+
+        var migrated = AssertSuccess(
+            new FirstBloomReplay(_engine)
+                .Run(Seed, log));
+
+        Assert.Equal(
+            legacy.State.Width,
+            migrated.State.Width);
+
+        Assert.Equal(
+            legacy.State.Height,
+            migrated.State.Height);
+
+        Assert.Equal(
+            legacy.State.Cells,
+            migrated.State.Cells);
+
+        Assert.Equal(
+            legacy.State.Hand,
+            migrated.State.Hand);
+
+        Assert.Equal(
+            legacy.State.Score,
+            migrated.State.Score);
+
+        Assert.Equal(
+            legacy.State.Turn,
+            migrated.State.Turn);
+
+        Assert.Equal(
+            legacy.State.BloomCount,
+            migrated.State.BloomCount);
+
+        Assert.Equal(
+            legacy.State.RandomState,
+            migrated.State.RandomState);
+
+        Assert.Equal(
+            legacy.State.IsGameOver,
+            migrated.State.IsGameOver);
+    }
+
+    [Fact]
+    public void EventParityComparesConcreteTypesAndPayloads()
+    {
+        var log = BuildAcceptedLog(3);
+        var legacy = Replay.Run(
+            _engine,
+            Seed,
+            log,
+            log.Count);
+
+        var migrated = AssertSuccess(
+            new FirstBloomReplay(_engine)
+                .Run(Seed, log));
+
+        AssertEventSequenceEqual(
+            legacy.Events,
+            migrated.Events);
+    }
+
+    private IReadOnlyList<ActionEntry> BuildAcceptedLog(
+        int actionCount)
     {
         var state = _engine.Create(Seed);
-        var command = FindFirstValid(state);
-        var direct = _engine.Execute(state, command);
+        var log = new List<ActionEntry>();
 
-        Assert.True(direct.Succeeded);
+        for (var index = 0;
+             index < actionCount;
+             index++)
+        {
+            var command = FindFirstValid(state);
+            var result = _engine.Execute(state, command);
 
-        var entry = ToActionEntry(
-            command,
-            direct.State.Turn);
+            Assert.True(result.Succeeded);
 
-        var adapter =
-            new FirstBloomReplayAdapter(_engine);
+            log.Add(
+                ToActionEntry(
+                    command,
+                    result.State.Turn));
 
-        var adapted = adapter.Execute(
-            state,
-            entry);
+            state = result.State;
+        }
 
-        var accepted =
-            Assert.IsType<
-                ReplayStepResult<
-                    GameState,
-                    GameEvent>.Accepted>(
-                        adapted);
-
-        AssertStatesEqual(
-            direct.State,
-            accepted.State);
-
-        Assert.Equal(
-            direct.Events.Select(EventText),
-            accepted.Events.Select(EventText));
-    }
-
-    private IReadOnlyList<ActionEntry> BuildTwoActionLog()
-    {
-        var initialState = _engine.Create(Seed);
-
-        var firstCommand =
-            FindFirstValid(initialState);
-
-        var firstResult =
-            _engine.Execute(
-                initialState,
-                firstCommand);
-
-        Assert.True(firstResult.Succeeded);
-
-        var secondCommand =
-            FindFirstValid(firstResult.State);
-
-        var secondResult =
-            _engine.Execute(
-                firstResult.State,
-                secondCommand);
-
-        Assert.True(secondResult.Succeeded);
-
-        return
-        [
-            ToActionEntry(
-                firstCommand,
-                firstResult.State.Turn),
-
-            ToActionEntry(
-                secondCommand,
-                secondResult.State.Turn)
-        ];
+        return log;
     }
 
     private PlacePieceCommand FindFirstValid(
@@ -359,6 +658,15 @@ public sealed class VerdantReplayMigrationTests
             command.Rotation,
             turn);
 
+    private static ActionEntry CloneAction(
+        ActionEntry action) =>
+        new(
+            action.Slot,
+            action.Origin,
+            action.Rotation,
+            action.Turn,
+            action.RandomPosition);
+
     private static ReplayResult<
         GameState,
         GameEvent>.Success AssertSuccess(
@@ -371,82 +679,289 @@ public sealed class VerdantReplayMigrationTests
                 GameEvent>.Success>(
                     result);
 
-    private static void AssertStatesEqual(
+    private static void AssertStateEqual(
         GameState expected,
         GameState actual)
     {
-        Assert.Equal(
-            expected.Width,
-            actual.Width);
-
-        Assert.Equal(
-            expected.Height,
-            actual.Height);
-
-        Assert.Equal(
-            expected.Cells,
-            actual.Cells);
-
-        Assert.Equal(
-            expected.Hand,
-            actual.Hand);
-
-        Assert.Equal(
-            expected.Score,
-            actual.Score);
-
-        Assert.Equal(
-            expected.Turn,
-            actual.Turn);
-
-        Assert.Equal(
-            expected.BloomCount,
-            actual.BloomCount);
-
-        Assert.Equal(
-            expected.RandomState,
-            actual.RandomState);
-
-        Assert.Equal(
-            expected.IsGameOver,
-            actual.IsGameOver);
+        Assert.Equal(expected.Width, actual.Width);
+        Assert.Equal(expected.Height, actual.Height);
+        Assert.Equal(expected.Cells, actual.Cells);
+        Assert.Equal(expected.Hand, actual.Hand);
+        Assert.Equal(expected.Score, actual.Score);
+        Assert.Equal(expected.Turn, actual.Turn);
+        Assert.Equal(expected.BloomCount, actual.BloomCount);
+        Assert.Equal(expected.RandomState, actual.RandomState);
+        Assert.Equal(expected.IsGameOver, actual.IsGameOver);
     }
 
-    private static string Snapshot(
+    private static void AssertEventSequenceEqual(
+        IReadOnlyList<GameEvent> expected,
+        IReadOnlyList<GameEvent> actual)
+    {
+        Assert.Equal(expected.Count, actual.Count);
+
+        for (var index = 0;
+             index < expected.Count;
+             index++)
+        {
+            AssertEventEqual(
+                expected[index],
+                actual[index]);
+        }
+    }
+
+    private static void AssertEventBatchesEqual(
+        IReadOnlyList<IReadOnlyList<GameEvent>> expected,
+        IReadOnlyList<IReadOnlyList<GameEvent>> actual)
+    {
+        Assert.Equal(expected.Count, actual.Count);
+
+        for (var index = 0;
+             index < expected.Count;
+             index++)
+        {
+            AssertEventSequenceEqual(
+                expected[index],
+                actual[index]);
+        }
+    }
+
+    private static void AssertEventEqual(
+        GameEvent expected,
+        GameEvent actual)
+    {
+        Assert.Equal(
+            expected.GetType(),
+            actual.GetType());
+
+        switch (expected)
+        {
+            case PiecePlacedEvent expectedPlaced:
+            {
+                var actualPlaced =
+                    Assert.IsType<PiecePlacedEvent>(actual);
+
+                Assert.Equal(
+                    expectedPlaced.PieceName,
+                    actualPlaced.PieceName);
+
+                Assert.Equal(
+                    expectedPlaced.Cells,
+                    actualPlaced.Cells);
+
+                break;
+            }
+
+            case GrowthResolvedEvent expectedGrowth:
+            {
+                var actualGrowth =
+                    Assert.IsType<GrowthResolvedEvent>(actual);
+
+                Assert.Equal(
+                    expectedGrowth.GrowthFrom,
+                    actualGrowth.GrowthFrom);
+
+                Assert.Equal(
+                    expectedGrowth.GrowthTo,
+                    actualGrowth.GrowthTo);
+
+                break;
+            }
+
+            case BloomResolvedEvent expectedBloom:
+            {
+                var actualBloom =
+                    Assert.IsType<BloomResolvedEvent>(actual);
+
+                Assert.Equal(
+                    expectedBloom.Cells,
+                    actualBloom.Cells);
+
+                Assert.Equal(
+                    expectedBloom.CellCount,
+                    actualBloom.CellCount);
+
+                Assert.Equal(
+                    expectedBloom.PieceCount,
+                    actualBloom.PieceCount);
+
+                Assert.Equal(
+                    expectedBloom.EnclosureCount,
+                    actualBloom.EnclosureCount);
+
+                Assert.Equal(
+                    expectedBloom.Score,
+                    actualBloom.Score);
+
+                break;
+            }
+
+            case GameEndedEvent expectedEnded:
+            {
+                var actualEnded =
+                    Assert.IsType<GameEndedEvent>(actual);
+
+                Assert.Equal(
+                    expectedEnded.Verdict,
+                    actualEnded.Verdict);
+
+                break;
+            }
+
+            default:
+                throw new InvalidOperationException(
+                    $"No structural event comparer exists for " +
+                    $"{expected.GetType().FullName}.");
+        }
+    }
+
+    private static StateSnapshot CaptureState(
         GameState state) =>
-        string.Join(
-            "|",
+        new(
             state.Width,
             state.Height,
-            string.Join(",", state.Cells),
-            string.Join(",", state.Hand),
+            state.Cells.ToArray(),
+            state.Hand.ToArray(),
             state.Score,
             state.Turn,
             state.BloomCount,
             state.RandomState,
             state.IsGameOver);
 
-    private static string EventText(
+    private static void AssertStateSnapshotEqual(
+        StateSnapshot expected,
+        StateSnapshot actual)
+    {
+        Assert.Equal(expected.Width, actual.Width);
+        Assert.Equal(expected.Height, actual.Height);
+        Assert.Equal(expected.Cells, actual.Cells);
+        Assert.Equal(expected.Hand, actual.Hand);
+        Assert.Equal(expected.Score, actual.Score);
+        Assert.Equal(expected.Turn, actual.Turn);
+        Assert.Equal(expected.BloomCount, actual.BloomCount);
+        Assert.Equal(expected.RandomState, actual.RandomState);
+        Assert.Equal(expected.IsGameOver, actual.IsGameOver);
+    }
+
+    private static EventSnapshot CaptureEvent(
         GameEvent item) =>
         item switch
         {
             PiecePlacedEvent placed =>
-                $"Place:{placed.PieceName}:" +
-                string.Join(';', placed.Cells),
+                new EventSnapshot(
+                    nameof(PiecePlacedEvent),
+                    placed.PieceName,
+                    placed.Cells.ToArray(),
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null),
 
             GrowthResolvedEvent growth =>
-                $"Grow:{growth.GrowthFrom}:" +
-                $"{growth.GrowthTo}",
+                new EventSnapshot(
+                    nameof(GrowthResolvedEvent),
+                    null,
+                    [],
+                    growth.GrowthFrom,
+                    growth.GrowthTo,
+                    null,
+                    null,
+                    null,
+                    null),
 
             BloomResolvedEvent bloom =>
-                $"Bloom:{bloom.CellCount}:" +
-                $"{bloom.Score}:" +
-                string.Join(';', bloom.Cells),
+                new EventSnapshot(
+                    nameof(BloomResolvedEvent),
+                    null,
+                    bloom.Cells.ToArray(),
+                    null,
+                    null,
+                    bloom.CellCount,
+                    bloom.PieceCount,
+                    bloom.EnclosureCount,
+                    bloom.Score),
 
             GameEndedEvent ended =>
-                $"End:{ended.Verdict}",
+                new EventSnapshot(
+                    nameof(GameEndedEvent),
+                    ended.Verdict,
+                    [],
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null),
 
             _ =>
-                item.GetType().Name
+                throw new InvalidOperationException(
+                    $"No event snapshot exists for " +
+                    $"{item.GetType().FullName}.")
         };
+
+    private sealed record StateSnapshot(
+        int Width,
+        int Height,
+        IReadOnlyList<CellMaterial> Cells,
+        IReadOnlyList<HandPiece> Hand,
+        int Score,
+        int Turn,
+        int BloomCount,
+        ulong RandomState,
+        bool IsGameOver);
+
+    private sealed record EventSnapshot(
+        string Type,
+        string? Text,
+        IReadOnlyList<Position> Cells,
+        Position? From,
+        Position? To,
+        int? CellCount,
+        int? PieceCount,
+        int? EnclosureCount,
+        int? Score);
+
+    private sealed class SpyGameEngine(
+        IGameEngine inner) :
+        IGameEngine
+    {
+        public int CreateCallCount { get; private set; }
+
+        public int PreviewCallCount { get; private set; }
+
+        public int ExecuteCallCount { get; private set; }
+
+        public List<string> CreatedSeeds { get; } = [];
+
+        public List<PlacePieceCommand> ExecutedCommands { get; } = [];
+
+        public GameState Create(string seed)
+        {
+            CreateCallCount++;
+            CreatedSeeds.Add(seed);
+
+            return inner.Create(seed);
+        }
+
+        public PreviewResult Preview(
+            GameState state,
+            PlacePieceCommand command)
+        {
+            PreviewCallCount++;
+
+            return inner.Preview(state, command);
+        }
+
+        public CommandResult Execute(
+            GameState state,
+            PlacePieceCommand command)
+        {
+            ExecuteCallCount++;
+            ExecutedCommands.Add(command);
+
+            return inner.Execute(state, command);
+        }
+    }
 }

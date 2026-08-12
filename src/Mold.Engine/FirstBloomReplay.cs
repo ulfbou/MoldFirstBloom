@@ -8,18 +8,18 @@ public sealed class FirstBloomReplay
         FirstBloomReplayInitialization,
         GameState,
         ActionEntry,
-        GameEvent> _replay;
+        GameEvent> _engine;
 
-    public FirstBloomReplay(IGameEngine engine)
+    public FirstBloomReplay(IGameEngine gameEngine)
     {
-        ArgumentNullException.ThrowIfNull(engine);
+        ArgumentNullException.ThrowIfNull(gameEngine);
 
-        _replay = new ReplayEngine<
+        _engine = new ReplayEngine<
             FirstBloomReplayInitialization,
             GameState,
             ActionEntry,
             GameEvent>(
-                new FirstBloomReplayAdapter(engine));
+                new FirstBloomReplayAdapter(gameEngine));
     }
 
     public ReplayResult<GameState, GameEvent> Run(
@@ -30,7 +30,7 @@ public sealed class FirstBloomReplay
         ArgumentException.ThrowIfNullOrWhiteSpace(seed);
         ArgumentNullException.ThrowIfNull(actionLog);
 
-        return _replay.Replay(
+        return _engine.Replay(
             new ReplayRequest<
                 FirstBloomReplayInitialization,
                 ActionEntry>(
