@@ -1,5 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
+    <ProjectReference Include="..\..\..\verdant\src\Verdant.History\Verdant.History.csproj" />
     <ProjectReference Include="..\..\..\verdant\src\Verdant.Replay\Verdant.Replay.csproj" />
   </ItemGroup>
   <PropertyGroup>
