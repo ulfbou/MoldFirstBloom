@@ -9,9 +9,16 @@
             <span class="sheet-handle" aria-hidden="true"></span>
             <header class="sheet-heading">
                 <h2 id="sheet-title">@Title(sheet)</h2>
-                <button type="button" class="sheet-close" @onclick="CloseAsync" aria-label="Close sheet">×</button>
+                <button type="button" class="sheet-close" @onclick="CloseAsync" aria-label="Close sheet">x</button>
             </header>
-            <p class="sheet-placeholder">@Description(sheet)</p>
+            @if (sheet == SheetKind.History)
+            {
+                <HistorySheet />
+            }
+            else
+            {
+                <p class="sheet-placeholder">@Description(sheet)</p>
+            }
         </section>
     </div>
 }
@@ -28,7 +35,7 @@
     private static string Title(SheetKind sheet) => sheet switch
     {
         SheetKind.Museum => "Museum",
-        SheetKind.History => "History",
+        SheetKind.History => "Timeline",
         SheetKind.Blueprints => "Blueprints",
         SheetKind.Log => "Event Log",
         SheetKind.Tutorial => "Tutorial",
@@ -38,7 +45,6 @@
     private static string Description(SheetKind sheet) => sheet switch
     {
         SheetKind.Museum => "Discoveries arrive in a later phase.",
-        SheetKind.History => "Timeline replay arrives in a later phase.",
         SheetKind.Blueprints => "Blueprint storage arrives in a later phase.",
         SheetKind.Log => "Committed semantic events will appear here.",
         SheetKind.Tutorial => "Interactive mini-boards arrive in a later phase.",

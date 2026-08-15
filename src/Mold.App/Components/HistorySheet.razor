@@ -1,0 +1,140 @@
+@using Verdant.History
+@inject GameSession Session
+@inject FirstBloomHistory History
+
+<div class="timeline-sheet">
+    <div class="timeline-mode" aria-live="polite">
+        <strong>@(IsLive ? "Live" : "Historical inspection")</strong>
+        <span>@PositionText</span>
+    </div>
+
+    <div class="timeline-controls">
+        <label for="timeline-position">Successful actions</label>
+        <input id="timeline-position"
+               type="range"
+               min="0"
+               max="@Session.ActionLog.Count"
+               value="@SelectedActionCount"
+               @oninput="SelectPosition" />
+        <div class="timeline-position-buttons" aria-label="Timeline positions">
+            @for (var position = 0; position <= Session.ActionLog.Count; position++)
+            {
+                var capturedPosition = position;
+                <button type="button"
+                        class="@(SelectedActionCount == capturedPosition && !IsLive ? "selected" : null)"
+                        aria-label="Inspect after @capturedPosition successful actions"
+                        @onclick="() => Inspect(capturedPosition)">
+                    @capturedPosition
+                </button>
+            }
+        </div>
+        <button type="button" class="timeline-live" @onclick="ReturnToLive">
+            Return to Live
+        </button>
+    </div>
+
+    @if (IsLive)
+    {
+        <section class="timeline-facts" aria-label="Live state facts">
+            <h3>Live authority</h3>
+            <dl>
+                <dt>Turn</dt><dd>@Session.State.Turn</dd>
+                <dt>Score</dt><dd>@Session.State.Score</dd>
+                <dt>Blooms</dt><dd>@Session.State.BloomCount</dd>
+                <dt>Actions</dt><dd>@Session.ActionLog.Count</dd>
+            </dl>
+        </section>
+    }
+    else if (Result is HistoricalQueryResult<GameState, GameEvent>.Success success)
+    {
+        <section class="timeline-facts" aria-label="Historical state facts">
+            <h3>State after @success.AppliedActionCount actions</h3>
+            <dl>
+                <dt>Requested</dt><dd>@success.RequestedActionCount</dd>
+                <dt>Applied</dt><dd>@success.AppliedActionCount</dd>
+                <dt>Turn</dt><dd>@success.State.Turn</dd>
+                <dt>Score</dt><dd>@success.State.Score</dd>
+                <dt>Blooms</dt><dd>@success.State.BloomCount</dd>
+                <dt>Hand</dt><dd>@success.State.Hand.Count</dd>
+                    <dt>Game over</dt><dd>@(success.State.IsGameOver ? "Yes" : "No")</dd>
+            </dl>
+        </section>
+
+        <section class="timeline-events" aria-label="Historical semantic events">
+            <h3>Semantic events</h3>
+            @if (success.EventBatches.Count == 0)
+            {
+                <p>No successful actions have been applied.</p>
+            }
+            else
+            {
+                @for (var batchIndex = 0; batchIndex < success.EventBatches.Count; batchIndex++)
+                {
+                    var batch = success.EventBatches[batchIndex];
+                    <article class="timeline-batch">
+                        <h4>Action @(batchIndex + 1)</h4>
+                        <ol>
+                            @foreach (var gameEvent in batch)
+                            {
+                                <li>@Describe(gameEvent)</li>
+                            }
+                        </ol>
+                    </article>
+                }
+            }
+        </section>
+    }
+    else if (Result is HistoricalQueryResult<GameState, GameEvent>.Failure failure)
+    {
+        <section class="timeline-error" role="alert">
+            <h3>Historical inspection unavailable</h3>
+            <p>The requested position was not applied. Live authority remains unchanged.</p>
+            <p>Code: @failure.Error.Code</p>
+        </section>
+    }
+</div>
+
+@code {
+    private string PositionText => IsLive
+        ? $"{Session.ActionLog.Count} successful actions"
+        : $"Selected {SelectedActionCount} of {Session.ActionLog.Count} successful actions";
+
+    private bool IsLive { get; set; } = true;
+    private int SelectedActionCount { get; set; }
+    private HistoricalQueryResult<GameState, GameEvent>? Result { get; set; }
+
+    protected override void OnInitialized() => ReturnToLive();
+
+    private void SelectPosition(ChangeEventArgs args)
+    {
+        if (int.TryParse(args.Value?.ToString(), out var position))
+        {
+            Inspect(position);
+        }
+    }
+
+    private void Inspect(int actionCount)
+    {
+        SelectedActionCount = actionCount;
+        Result = History.Query(Session.Seed, Session.ActionLog, actionCount);
+        IsLive = false;
+    }
+
+    private void ReturnToLive()
+    {
+        IsLive = true;
+        SelectedActionCount = Session.ActionLog.Count;
+        Result = null;
+    }
+
+    private static string Describe(GameEvent gameEvent) => gameEvent switch
+    {
+        PiecePlacedEvent placed => $"Placed {placed.PieceName} at {string.Join(", ", placed.Cells.Select(Label))}.",
+        GrowthResolvedEvent growth => $"Growth {Label(growth.GrowthFrom)} to {Label(growth.GrowthTo)}.",
+        BloomResolvedEvent bloom => $"Bloomed {bloom.CellCount} cells for {bloom.Score} points.",
+        GameEndedEvent ended => ended.Verdict,
+        _ => gameEvent.GetType().Name
+    };
+
+    private static string Label(Position position) => $"{(char)('A' + position.X)}{position.Y + 1}";
+}
