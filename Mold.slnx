@@ -2,4 +2,5 @@
   <Project Path="src/Mold.Engine/Mold.Engine.csproj" />
   <Project Path="src/Mold.App/Mold.App.csproj" />
   <Project Path="tests/Mold.Engine.Tests/Mold.Engine.Tests.csproj" />
+  <Project Path="tests/Mold.App.Tests/Mold.App.Tests.csproj" />
 </Solution>
