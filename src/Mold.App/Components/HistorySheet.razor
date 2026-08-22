@@ -1,6 +1,8 @@
 @using Verdant.History
+@implements IDisposable
 @inject GameSession Session
 @inject FirstBloomHistory History
+@inject AnimationTimeline Player
 
 <div class="timeline-sheet">
     <div class="timeline-mode" aria-live="polite">
@@ -10,73 +12,63 @@
 
     <div class="timeline-controls">
         <label for="timeline-position">Successful actions</label>
-        <input id="timeline-position"
-               type="range"
-               min="0"
-               max="@Session.ActionLog.Count"
-               value="@SelectedActionCount"
-               @oninput="SelectPosition" />
+        <input id="timeline-position" type="range" min="0" max="@Session.ActionLog.Count"
+               value="@SelectedActionCount" @oninput="SelectPosition" />
         <div class="timeline-position-buttons" aria-label="Timeline positions">
             @for (var position = 0; position <= Session.ActionLog.Count; position++)
             {
                 var capturedPosition = position;
-                <button type="button"
-                        class="@(SelectedActionCount == capturedPosition && !IsLive ? "selected" : null)"
+                <button type="button" class="@(SelectedActionCount == capturedPosition && !IsLive ? "selected" : null)"
                         aria-label="Inspect after @capturedPosition successful actions"
-                        @onclick="() => Inspect(capturedPosition)">
-                    @capturedPosition
-                </button>
+                        @onclick="() => InspectAsync(capturedPosition)">@capturedPosition</button>
             }
         </div>
-        <button type="button" class="timeline-live" @onclick="ReturnToLive">
-            Return to Live
-        </button>
+        <button type="button" class="timeline-live" @onclick="ReturnToLive">Return to Live</button>
     </div>
 
     @if (IsLive)
     {
         <section class="timeline-facts" aria-label="Live state facts">
             <h3>Live authority</h3>
-            <dl>
-                <dt>Turn</dt><dd>@Session.State.Turn</dd>
-                <dt>Score</dt><dd>@Session.State.Score</dd>
-                <dt>Blooms</dt><dd>@Session.State.BloomCount</dd>
-                <dt>Actions</dt><dd>@Session.ActionLog.Count</dd>
-            </dl>
+            <dl><dt>Turn</dt><dd>@Session.State.Turn</dd><dt>Score</dt><dd>@Session.State.Score</dd>
+                <dt>Blooms</dt><dd>@Session.State.BloomCount</dd><dt>Actions</dt><dd>@Session.ActionLog.Count</dd></dl>
         </section>
     }
-    else if (Result is HistoricalQueryResult<GameState, GameEvent>.Success success)
+    else if (Selection is { } selection)
     {
         <section class="timeline-facts" aria-label="Historical state facts">
-            <h3>State after @success.AppliedActionCount actions</h3>
-            <dl>
-                <dt>Requested</dt><dd>@success.RequestedActionCount</dd>
-                <dt>Applied</dt><dd>@success.AppliedActionCount</dd>
-                <dt>Turn</dt><dd>@success.State.Turn</dd>
-                <dt>Score</dt><dd>@success.State.Score</dd>
-                <dt>Blooms</dt><dd>@success.State.BloomCount</dd>
-                <dt>Hand</dt><dd>@success.State.Hand.Count</dd>
-                    <dt>Game over</dt><dd>@(success.State.IsGameOver ? "Yes" : "No")</dd>
-            </dl>
+            <h3>State after @selection.AppliedActionCount actions</h3>
+            <dl><dt>Requested</dt><dd>@selection.RequestedActionCount</dd><dt>Applied</dt><dd>@selection.AppliedActionCount</dd>
+                <dt>Turn</dt><dd>@selection.State.Turn</dd><dt>Score</dt><dd>@selection.State.Score</dd>
+                <dt>Blooms</dt><dd>@selection.State.BloomCount</dd><dt>Hand</dt><dd>@selection.State.Hand.Count</dd>
+                <dt>Game over</dt><dd>@(selection.State.IsGameOver ? "Yes" : "No")</dd></dl>
         </section>
 
-        <section class="timeline-events" aria-label="Historical semantic events">
-            <h3>Semantic events</h3>
-            @if (success.EventBatches.Count == 0)
+        <section class="timeline-events" aria-label="Authoritative event batches" aria-live="polite">
+            <div class="timeline-playback-controls" aria-label="Timeline playback controls">
+                <button type="button" @onclick="TogglePause">@(Player.IsPaused ? "Resume" : "Pause")</button>
+                <button type="button" @onclick="FastForward">Fast forward</button>
+                <button type="button" @onclick="Skip">Skip animation</button>
+                <label><input type="checkbox" @bind="ReducedMotion" /> Reduce motion</label>
+            </div>
+            <p class="timeline-static-note">All authoritative event meaning remains readable regardless of motion or playback state.</p>
+            @if (selection.Batches.Count == 0)
             {
                 <p>No successful actions have been applied.</p>
             }
             else
             {
-                @for (var batchIndex = 0; batchIndex < success.EventBatches.Count; batchIndex++)
+                @foreach (var batch in selection.Batches)
                 {
-                    var batch = success.EventBatches[batchIndex];
                     <article class="timeline-batch">
-                        <h4>Action @(batchIndex + 1)</h4>
+                        <h4>Action @batch.ActionNumber <span>authoritative batch</span></h4>
                         <ol>
-                            @foreach (var gameEvent in batch)
+                            @foreach (var item in batch.Events)
                             {
-                                <li>@Describe(gameEvent)</li>
+                                var active = ActiveItem == item;
+                                <li class="timeline-event @KindClass(item.Kind) @(active ? "active" : null)">
+                                    <strong>@item.Label</strong><span>@item.Description</span>
+                                </li>
                             }
                         </ol>
                     </article>
@@ -84,57 +76,77 @@
             }
         </section>
     }
-    else if (Result is HistoricalQueryResult<GameState, GameEvent>.Failure failure)
+    else if (FailureCode is { } code)
     {
-        <section class="timeline-error" role="alert">
-            <h3>Historical inspection unavailable</h3>
-            <p>The requested position was not applied. Live authority remains unchanged.</p>
-            <p>Code: @failure.Error.Code</p>
-        </section>
+        <section class="timeline-error" role="alert"><h3>Historical inspection unavailable</h3>
+            <p>The requested position was not applied. Live authority remains unchanged.</p><p>Code: @(code)</p></section>
     }
 </div>
 
 @code {
-    private string PositionText => IsLive
-        ? $"{Session.ActionLog.Count} successful actions"
-        : $"Selected {SelectedActionCount} of {Session.ActionLog.Count} successful actions";
-
+    private string PositionText => IsLive ? $"{Session.ActionLog.Count} successful actions" : $"Selected {SelectedActionCount} of {Session.ActionLog.Count} successful actions";
     private bool IsLive { get; set; } = true;
+    private bool ReducedMotion { get; set; }
     private int SelectedActionCount { get; set; }
-    private HistoricalQueryResult<GameState, GameEvent>? Result { get; set; }
+    private TimelineSelection? Selection { get; set; }
+    private TimelineEventItem? ActiveItem { get; set; }
+    private string? FailureCode { get; set; }
+    private CancellationTokenSource? _playback;
 
     protected override void OnInitialized() => ReturnToLive();
 
-    private void SelectPosition(ChangeEventArgs args)
+    private async Task SelectPosition(ChangeEventArgs args)
     {
-        if (int.TryParse(args.Value?.ToString(), out var position))
-        {
-            Inspect(position);
-        }
+        if (int.TryParse(args.Value?.ToString(), out var position)) await InspectAsync(position);
     }
 
-    private void Inspect(int actionCount)
+    private async Task InspectAsync(int actionCount)
     {
+        CancelPlayback();
         SelectedActionCount = actionCount;
-        Result = History.Query(Session.Seed, Session.ActionLog, actionCount);
         IsLive = false;
+        ActiveItem = null;
+        FailureCode = null;
+        var result = History.Query(Session.Seed, Session.ActionLog, actionCount);
+        if (result is HistoricalQueryResult<GameState, GameEvent>.Failure failure)
+        {
+            Selection = null;
+            FailureCode = failure.Error.Code.ToString();
+            return;
+        }
+        var success = (HistoricalQueryResult<GameState, GameEvent>.Success)result;
+        Selection = AnimationTimeline.CreateSelection(success.State, success.RequestedActionCount, success.AppliedActionCount, success.EventBatches);
+        _playback = new();
+        try
+        {
+            await Player.PlayAsync(Selection, ReducedMotion, frame =>
+            {
+                ActiveItem = frame.Item;
+                return InvokeAsync(StateHasChanged);
+            }, _playback.Token);
+        }
+        catch (OperationCanceledException) { }
+        finally
+        {
+            ActiveItem = null;
+            await InvokeAsync(StateHasChanged);
+        }
     }
 
     private void ReturnToLive()
     {
+        CancelPlayback();
         IsLive = true;
         SelectedActionCount = Session.ActionLog.Count;
-        Result = null;
+        Selection = null;
+        FailureCode = null;
+        ActiveItem = null;
     }
 
-    private static string Describe(GameEvent gameEvent) => gameEvent switch
-    {
-        PiecePlacedEvent placed => $"Placed {placed.PieceName} at {string.Join(", ", placed.Cells.Select(Label))}.",
-        GrowthResolvedEvent growth => $"Growth {Label(growth.GrowthFrom)} to {Label(growth.GrowthTo)}.",
-        BloomResolvedEvent bloom => $"Bloomed {bloom.CellCount} cells for {bloom.Score} points.",
-        GameEndedEvent ended => ended.Verdict,
-        _ => gameEvent.GetType().Name
-    };
-
-    private static string Label(Position position) => $"{(char)('A' + position.X)}{position.Y + 1}";
+    private void TogglePause() { if (Player.IsPaused) Player.Resume(); else Player.Pause(); }
+    private void FastForward() => Player.FastForward();
+    private void Skip() => Player.Skip();
+    private void CancelPlayback() { _playback?.Cancel(); _playback?.Dispose(); _playback = null; Player.Resume(); }
+    private static string KindClass(TimelineEventKind kind) => kind.ToString().ToLowerInvariant();
+    public void Dispose() => CancelPlayback();
 }
